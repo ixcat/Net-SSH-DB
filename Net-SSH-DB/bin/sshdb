@@ -1,0 +1,96 @@
+#! /usr/bin/env perl
+
+package main;
+
+use strict;
+use warnings;
+
+use Time::Piece; # for time correction in logs
+
+use FindBin;
+use lib "$FindBin::Bin" . "/../lib";
+
+use Net::SSH::DB;
+use Net::SSH::LogParser;
+
+sub usage_exit;
+sub main;
+
+sub usage_exit {
+
+	(my $app = $0) =~ s:.*/::;
+
+	print "usage: $app db cmd args\n";
+	print "  where 'db cmd args' is one of:\n";
+	print "    - dbfile create [logfile ...]\n";
+	print "    - dbfile insert logfile [...]\n";
+	print "  and:\n";
+	print "    - dbfile: is the database file path\n";
+	print "    - host: the hostname for the following logfile\n";
+	print "    - logfile: is a file path containing ssh log data\n";
+
+#	print "    insert filename key value\n";
+#	print "    update filename key value\n";
+#	print "    query filename [key]\n";
+
+	exit 0;
+
+}
+
+sub main {
+
+        my $file = shift or usage_exit;
+        my $act = shift;
+        $act = '' unless $act;
+
+	if($act eq 'create') {
+		my $sshdb = Net::SSH::DB->new($file) or exit $!;
+		exit $sshdb->createdb();
+	}
+	elsif ($act eq 'insert') { 
+
+		my $sshdb = Net::SSH::DB->new($file) or exit $!;
+
+		$sshdb->begintxn();
+
+		while (my $file = shift @_) {
+
+			my $proc = Net::SSH::LogParser->new();
+
+			# hack - should parse flag
+			#   but typically, will be using current year,
+			# so really, using this env var is also a hack?
+
+			my $procy = $ENV{SFTPDBYYYY} ?
+				$ENV{SFTPDBYYYY} :
+				Time::Piece::localtime()->_year();
+
+			my $proctz = $ENV{TZ} ? $ENV{TZ} : 'GMT';
+
+			$proc->setdate( $procy, $proctz );
+
+			$proc->open($file);
+
+			$proc->{_guesspid} = 1;
+
+			while(my $evt = $proc->next()) {
+				if($evt->{state} ne 'abrt') {
+					$sshdb->insertrec($evt);
+				}
+			}
+
+		}
+
+		$sshdb->endtxn();
+
+	}
+	else {
+		usage_exit;
+	}
+
+}
+
+main @ARGV;
+
+1;
+__DATA__

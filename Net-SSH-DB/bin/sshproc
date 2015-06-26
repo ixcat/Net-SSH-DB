@@ -1,0 +1,28 @@
+#! /usr/bin/env perl
+
+# ssh/sftp login record processing - WIP
+#  misc notes:
+#    - el6 login records different than e.g. openbsd
+#      'subsystem request' is syslog .INFO on el6 (ssh portable?) but debug2
+#      on openbsd - however, can setup sftp flags..
+#    - for now, scratching out el6 processing logic using <DATA>
+#    - probably need more logic cases for other linuces, etc.
+
+package main;
+
+use strict;
+use warnings;
+
+use FindBin;
+use lib "$FindBin::Bin" . "/../lib";
+
+use Net::SSH::LogParser;
+
+my $file = shift;
+
+exit Net::SSH::LogParser->main({ 
+	action => 'procdmp',
+	dateconv => 1,
+	logfile => $file
+});
+

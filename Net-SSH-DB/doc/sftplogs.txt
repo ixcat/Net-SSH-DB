@@ -1,0 +1,261 @@
+
+ssh/sftp log snippets for parse testing..
+
+basically, due to privsep and incomplete logging, logic to properly
+track/parse sftp requires subprocess tracing to capture sftp for 
+non-root users..
+
+could probably disable privsep to stop this.. but seems like bad idea
+
+short answer: 
+
+setting logging to 'verbose' (instead of 'info') generates subprocess
+message, which then can be used to look match sftp subsystem requests
+back to the encompassing 'session' PID
+
+
+-- examples: --
+
+# root ssh
+
+works - all ssh processes handle from same toplevel
+
+sshd[1122]: Accepted publickey for root from 192.168.1.21 port 34264 ssh2
+sshd[1122]: pam_unix(sshd:session): session opened for user root by (uid=0)
+sshd[1122]: Received disconnect from 192.168.1.21: 11: disconnected by user
+sshd[1122]: pam_unix(sshd:session): session closed for user root
+
+# root sftp
+
+works - sftp request occurs from same non-privsep process
+
+sshd[1230]: Accepted publickey for root from 192.168.1.21 port 10478 ssh2
+sshd[1230]: pam_unix(sshd:session): session opened for user root by (uid=0)
+sshd[1230]: subsystem request for sftp
+sshd[1230]: Received disconnect from 192.168.1.21: 11: disconnected by user
+sshd[1230]: pam_unix(sshd:session): session closed for user root
+
+# non-root ssh
+
+works - pam logmsg can be pid-matched and correlates to ssh logout
+
+sshd[812]: Accepted publickey for chris from 192.168.1.21 port 34159 ssh2
+sshd[812]: pam_unix(sshd:session): session opened for user chris by (uid=0)
+sshd[817]: Received disconnect from 192.168.1.21: 11: disconnected by user
+sshd[812]: pam_unix(sshd:session): session closed for user chris
+
+# non-root sftp
+
+doesn't work: no definite connection from top level proc to sftp logmsg
+  .. could more-than-likely be guessed by correlating pam logout to pid,
+     and reprocessing that pid's messages against pam logout pid, 
+     or similar .. but that's alot of logic, and still error prone..
+
+sshd[1034]: Accepted publickey for chris from 192.168.1.21 port 27290 ssh2
+sshd[1034]: pam_unix(sshd:session): session opened for user chris by (uid=0)
+sshd[1039]: subsystem request for sftp
+sshd[1039]: Received disconnect from 192.168.1.21: 11: disconnected by user
+sshd[1034]: pam_unix(sshd:session): session closed for user chris
+
+# root (el6, with sftp-server -l INFO)
+
+workable: as before
+
+24389 - sshd login, logs user/ip/port, then session open
+24389 - makes 'subsystem request for sftp'
+24394 - sftp-server subproc, opens user w/IP but not port
+24394 - sftp-server subproc, closes user w/IP but not port
+24389 - logs disconnect/ip
+24389 - logs session close
+
+sshd[24256]: Received signal 15; terminating.
+sshd[24382]: Server listening on 0.0.0.0 port 22.
+sshd[24382]: Server listening on :: port 22.
+sshd[24389]: Accepted publickey for root from 192.168.1.21 port 45820 ssh2
+sshd[24389]: pam_unix(sshd:session): session opened for user root by (uid=0)
+sshd[24389]: subsystem request for sftp
+sftp-server[24394]: session opened for local user root from [192.168.1.21]
+sftp-server[24394]: opendir "/root"
+sftp-server[24394]: closedir "/root"
+sftp-server[24394]: opendir "/root/"
+sftp-server[24394]: closedir "/root/"
+sftp-server[24394]: opendir "/usr/home/root/Trash"
+sftp-server[24394]: closedir "/usr/home/root/Trash"
+sftp-server[24394]: open "/usr/home/root/Trash/perl-file-index.txt" flags READ mode 0666
+sftp-server[24394]: close "/usr/home/root/Trash/perl-file-index.txt" bytes read 119225 written 0
+sftp-server[24394]: session closed for local user root from [192.168.1.21]
+sshd[24389]: Received disconnect from 192.168.1.21: 11: disconnected by user
+srv1 sshd[24389]: pam_unix(sshd:session): session closed for user root
+
+# internal sftp equivalent - same pid sequence style
+
+workable: as before
+
+sshd[26349]: Accepted publickey for root from 192.168.1.21 port 17789 ssh2
+sshd[26349]: pam_unix(sshd:session): session opened for user root by (uid=0)
+sshd[26349]: subsystem request for sftp
+internal-sftp[26354]: session opened for local user root from [192.168.1.21]
+internal-sftp[26354]: opendir "/root"
+internal-sftp[26354]: closedir "/root"
+internal-sftp[26354]: session closed for local user root from [192.168.1.21]
+sshd[26349]: Received disconnect from 192.168.1.21: 11: disconnected by user
+sshd[26349]: pam_unix(sshd:session): session closed for user root
+
+# non-root (el6, with sftp-server -l INFO)
+
+not workable: as before: subsystem request line connected to unknown pid
+
+24621 - sshd login/pam master, logs user/ip/port, then session open
+24626 - user sshd subproc, makes 'subsystem request for sftp'
+24627 - sftp-server subproc, opens user w/IP but not port
+24627 - sftp-server subproc, closes user w/IP but not port
+24626 - sshd subproc logs disconnect/ip
+24621 - sshd master logs close
+
+sshd[24621]: Accepted publickey for chris from 192.168.1.21 port 3991 ssh2
+sshd[24621]: pam_unix(sshd:session): session opened for user chris by (uid=0)
+sshd[24626]: subsystem request for sftp
+sftp-server[24627]: session opened for local user chris from [192.168.1.21]
+sftp-server[24627]: opendir "/usr/home/chris"
+sftp-server[24627]: closedir "/usr/home/chris"
+sftp-server[24627]: opendir "/usr/home/chris/"
+sftp-server[24627]: closedir "/usr/home/chris/"
+sftp-server[24627]: opendir "/usr/home/chris/Trash"
+sftp-server[24627]: closedir "/usr/home/chris/Trash"
+sftp-server[24627]: opendir "/usr/home/chris/Trash/Now"
+sftp-server[24627]: closedir "/usr/home/chris/Trash/Now"
+sftp-server[24627]: open "/usr/home/chris/Trash/Now/perl-file-index.txt" flags READ mode 0666
+sftp-server[24627]: close "/usr/home/chris/Trash/Now/perl-file-index.txt" bytes read 119225 written 0
+sftp-server[24627]: session closed for local user chris from [192.168.1.21]
+sshd[24626]: Received disconnect from 192.168.1.21: 11: disconnected by user
+sshd[24621]: pam_unix(sshd:session): session closed for user chris
+
+# internal sftp equivelent - same pid sequence style
+
+not workable: as before: subsystem request line connected to unknown pid
+
+sshd[26249]: Accepted publickey for chris from 192.168.1.21 port 1728 ssh2
+sshd[26249]: pam_unix(sshd:session): session opened for user chris by (uid=0)
+sshd[26254]: subsystem request for sftp
+internal-sftp[26255]: session opened for local user chris from [192.168.1.21]
+internal-sftp[26255]: opendir "/usr/home/chris"
+internal-sftp[26255]: closedir "/usr/home/chris"
+internal-sftp[26255]: session closed for local user chris from [192.168.1.21]
+sshd[26254]: Received disconnect from 192.168.1.21: 11: disconnected by user
+sshd[26249]: pam_unix(sshd:session): session closed for user chris
+
+# openbsd lacks the pam messages by default:
+
+May  5 13:29:10 owl1a sshd[21175]: Accepted publickey for root from 192.168.1.21 port 4192 ssh2: RSA ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 13:29:13 owl1a sshd[21175]: Received disconnect from 192.168.1.21: 11: disconnected by user
+
+May  5 13:27:13 owl1a sshd[4107]: Accepted publickey for chris from 192.168.1.21 port 36115 ssh2: RSA ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 13:28:07 owl1a sshd[656]: Received disconnect from 192.168.1.21: 11: disconnected by user
+
+so there is no easy way to tie logout to login, by default..
+setting to 'LogLevel VERBOSE' logging allows tracking via child PID handoff..:
+
+# root:
+
+May  5 13:33:33 owl1a sshd[12004]: Connection from 192.168.1.21 port 34853 on 192.168.1.21 port 22
+May  5 13:33:33 owl1a sshd[12004]: Postponed publickey for root from 192.168.1.21 port 34853 ssh2 [preauth]
+May  5 13:33:33 owl1a sshd[12004]: Accepted publickey for root from 192.168.1.21 port 34853 ssh2: RSA ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 13:33:33 owl1a sshd[12004]: Starting session: shell on ttypm for root from 192.168.1.21 port 34853
+May  5 13:33:41 owl1a sshd[12004]: Received disconnect from 192.168.1.21: 11: disconnected by user
+
+May  5 13:38:07 owl1a sshd[26518]: Connection from 192.168.1.21 port 35760 on 192.168.1.21 port 22
+May  5 13:38:07 owl1a sshd[26518]: Postponed publickey for root from 192.168.1.21 port 35760 ssh2 [preauth]
+May  5 13:38:07 owl1a sshd[26518]: Accepted publickey for root from 192.168.1.21 port 35760 ssh2: RSA ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 13:38:07 owl1a sshd[26518]: Starting session: subsystem 'sftp' for root from 192.168.1.21 port 35760
+May  5 13:38:17 owl1a sshd[26518]: Received disconnect from 192.168.1.21: 11: disconnected by user
+
+# non-root:
+
+workable, the 'User child' string denotes subprocess which can be tracked
+
+May  5 13:33:54 owl1a sshd[30658]: Connection from 192.168.1.21 port 19681 on 192.168.1.21 port 22
+May  5 13:33:54 owl1a sshd[30658]: Postponed publickey for chris from 192.168.1.21 port 19681 ssh2 [preauth]
+May  5 13:33:54 owl1a sshd[30658]: Accepted publickey for chris from 192.168.1.21 port 19681 ssh2: RSA ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 13:33:54 owl1a sshd[30658]: User child is on pid 28013
+May  5 13:33:54 owl1a sshd[28013]: Starting session: shell on ttypm for chris from 192.168.1.21 port 19681
+May  5 13:34:06 owl1a sshd[28013]: Received disconnect from 192.168.1.21: 11: disconnected by user
+
+May  5 13:35:25 owl1a sshd[27595]: Connection from 192.168.1.21 port 9152 on 192.168.1.21 port 22
+May  5 13:35:25 owl1a sshd[27595]: Postponed publickey for chris from 192.168.1.21 port 9152 ssh2 [preauth]
+May  5 13:35:25 owl1a sshd[27595]: Accepted publickey for chris from 192.168.1.21 port 9152 ssh2: RSA ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 13:35:25 owl1a sshd[27595]: User child is on pid 122
+May  5 13:35:26 owl1a sshd[122]: Starting session: subsystem 'sftp' for chris from 192.168.1.21 port 9152
+May  5 13:35:40 owl1a sshd[122]: Received disconnect from 192.168.1.21: 11: disconnected by user
+
+# cross checking VERBOSE on linux (el6) (+= internal-sftp -l INFO)
+
+workable: no pid change
+
+# ssh root
+
+May  5 19:31:03 srv1 sshd[31973]: Set /proc/self/oom_score_adj to 0
+May  5 19:31:03 srv1 sshd[31973]: Connection from 192.168.1.21 port 33812
+May  5 19:31:03 srv1 sshd[31973]: Found matching RSA key: ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 19:31:03 srv1 sshd[31975]: Postponed publickey for root from 192.168.1.21 port 33812 ssh2
+May  5 19:31:03 srv1 sshd[31973]: Found matching RSA key: ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 19:31:03 srv1 sshd[31973]: Accepted publickey for root from 192.168.1.21 port 33812 ssh2
+May  5 19:31:03 srv1 sshd[31973]: pam_unix(sshd:session): session opened for user root by (uid=0)
+May  5 19:31:07 srv1 sshd[31973]: Received disconnect from 192.168.1.21: 11: disconnected by user
+May  5 19:31:07 srv1 sshd[31973]: pam_unix(sshd:session): session closed for user root
+
+# sftp root:
+
+workable: no pid change prior to sftp spawn,
+
+
+May  5 19:31:25 srv1 sshd[32017]: Set /proc/self/oom_score_adj to 0
+May  5 19:31:25 srv1 sshd[32017]: Connection from 192.168.1.21 port 10377
+May  5 19:31:25 srv1 sshd[32017]: Found matching RSA key: ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 19:31:25 srv1 sshd[32019]: Postponed publickey for root from 192.168.1.21 port 10377 ssh2
+May  5 19:31:25 srv1 sshd[32017]: Found matching RSA key: ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 19:31:25 srv1 sshd[32017]: Accepted publickey for root from 192.168.1.21 port 10377 ssh2
+May  5 19:31:25 srv1 sshd[32017]: pam_unix(sshd:session): session opened for user root by (uid=0)
+May  5 19:31:25 srv1 sshd[32017]: subsystem request for sftp
+May  5 19:31:25 srv1 internal-sftp[32022]: session opened for local user root from [192.168.1.21]
+May  5 19:31:33 srv1 internal-sftp[32022]: opendir "/root"
+May  5 19:31:33 srv1 internal-sftp[32022]: closedir "/root"
+May  5 19:31:34 srv1 internal-sftp[32022]: session closed for local user root from [192.168.1.21]
+May  5 19:31:34 srv1 sshd[32017]: Received disconnect from 192.168.1.21: 11: disconnected by user
+May  5 19:31:34 srv1 sshd[32017]: pam_unix(sshd:session): session closed for user root
+
+# ssh user:
+
+workable
+
+May  5 19:32:08 srv1 sshd[32077]: Set /proc/self/oom_score_adj to 0
+May  5 19:32:08 srv1 sshd[32077]: Connection from 192.168.1.21 port 9946
+May  5 19:32:08 srv1 sshd[32077]: Found matching RSA key: ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 19:32:08 srv1 sshd[32079]: Postponed publickey for chris from 192.168.1.21 port 9946 ssh2
+May  5 19:32:08 srv1 sshd[32077]: Found matching RSA key: ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 19:32:08 srv1 sshd[32077]: Accepted publickey for chris from 192.168.1.21 port 9946 ssh2
+May  5 19:32:08 srv1 sshd[32077]: pam_unix(sshd:session): session opened for user chris by (uid=0)
+May  5 19:32:08 srv1 sshd[32077]: User child is on pid 32083
+May  5 19:32:33 srv1 sshd[32083]: Received disconnect from 192.168.1.21: 11: disconnected by user
+May  5 19:32:33 srv1 sshd[32077]: pam_unix(sshd:session): session closed for user chris
+
+# sftp user:
+
+workable
+
+May  5 19:33:39 srv1 sshd[32274]: Set /proc/self/oom_score_adj to 0
+May  5 19:33:39 srv1 sshd[32274]: Connection from 192.168.1.21 port 47737
+May  5 19:33:39 srv1 sshd[32274]: Found matching RSA key: ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 19:33:39 srv1 sshd[32276]: Postponed publickey for chris from 192.168.1.21 port 47737 ssh2
+May  5 19:33:39 srv1 sshd[32274]: Found matching RSA key: ff:91:f5:36:80:c6:f3:ce:0f:47:6b:3e:50:fc:eb:a9
+May  5 19:33:39 srv1 sshd[32274]: Accepted publickey for chris from 192.168.1.21 port 47737 ssh2
+May  5 19:33:40 srv1 sshd[32274]: pam_unix(sshd:session): session opened for user chris by (uid=0)
+May  5 19:33:40 srv1 sshd[32274]: User child is on pid 32280
+May  5 19:33:40 srv1 sshd[32280]: subsystem request for sftp
+May  5 19:33:40 srv1 internal-sftp[32281]: session opened for local user chris from [192.168.1.21]
+May  5 19:33:47 srv1 internal-sftp[32281]: opendir "/usr/home/chris"
+May  5 19:33:47 srv1 internal-sftp[32281]: closedir "/usr/home/chris"
+May  5 19:33:48 srv1 internal-sftp[32281]: session closed for local user chris from [192.168.1.21]
+May  5 19:33:48 srv1 sshd[32280]: Received disconnect from 192.168.1.21: 11: disconnected by user
+May  5 19:33:49 srv1 sshd[32274]: pam_unix(sshd:session): session closed for user chris
+
+

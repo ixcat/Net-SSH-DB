@@ -1,0 +1,26 @@
+no logout message here:
+
+
+May  7 02:15:01 uranus sshd[6337]: Accepted publickey for root from 168.7.121.40 port 48382 ssh2
+May  7 02:17:20 uranus sshd[6412]: Connection closed by 10.143.195.18
+May  7 02:19:02 uranus sshd[6426]: Accepted publickey for root from 168.7.121.40 port 48395 ssh2
+May  7 02:21:06 uranus sshd[6488]: Accepted publickey for root from 168.7.121.40 port 48404 ssh2
+May  7 02:21:06 uranus sshd[6506]: Accepted publickey for root from 168.7.121.40 port 48405 ssh2
+May  7 02:21:18 uranus sshd[6522]: Accepted publickey for root from 168.7.121.40 port 48407 ssh2
+May  7 02:22:20 uranus sshd[6540]: Connection closed by 10.143.195.18
+May  7 02:27:20 uranus sshd[6590]: Connection closed by 10.143.195.18
+May  7 02:27:52 uranus pluto[3925]: "darkstarcli" #686: received Delete SA payload: deleting ISAKMP State #686
+May  7 02:27:52 uranus pluto[3925]: packet from 128.42.173.72:500: received and ignored informational message
+May  7 02:32:20 uranus sshd[6642]: Connection closed by 10.143.195.18
+May  7 02:37:20 uranus sshd[6692]: Connection closed by 10.143.195.18
+May  7 02:42:20 uranus sshd[6744]: Connection closed by 10.143.195.18
+May  7 02:47:20 uranus sshd[6794]: Connection closed by 10.143.195.18
+
+but happens from local rsync:
+
+May  8 13:44:25 uranus sshd[29925]: Accepted publickey for root from 168.7.23.138 port 24466 ssh2
+May  8 13:44:26 uranus sshd[29925]: Received disconnect from 168.7.23.138: 11: disconnected by user
+
+herm..
+
+was not able to determine cause, so leaving as is for now.
