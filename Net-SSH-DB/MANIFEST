@@ -1,0 +1,14 @@
+doc/sftplogs.txt
+doc/errs/no-rsync-disconnect-sometimes
+doc/errs/immediate-disconn-subpid
+MYMETA.json
+lib/Net/SSH/DB.pm
+lib/Net/SSH/LogParser.pm
+bin/sshdb
+bin/sshproc
+bin/sshdmp
+MYMETA.yml
+MANIFEST
+Makefile.PL
+TODO
+Makefile

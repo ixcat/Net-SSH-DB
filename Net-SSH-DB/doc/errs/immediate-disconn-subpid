@@ -1,0 +1,26 @@
+
+pid guessing heuristics only work for sftp at present,
+and so don't catch e.g:
+
+Apr 30 13:35:19 eve sshd[10238]: Accepted password for dd4932 from 173.198.127.66 port 42908 ssh2
+Apr 30 13:35:21 eve sshd[10240]: Received disconnect from 173.198.127.66: 11: disconnected by user
+
+some ides:
+
+  - track rhost:pids
+  - on disconnect, snag 'best match' of rhost:pids
+    - only guaranteed match in 'one pid' case
+    - secondary guesses:
+
+      - proximate pid number (assuming ascending PID's, 
+        which is not case for OB) -
+        ob would have to reconstruct pid sequence from first-seen pid in log
+        which is getting a bit contrived / extra work
+        (tracking pid sequence to track proximate pid)
+
+    - post-facto cleaning:
+      - cross-correlation from user login data
+      - cross-correlation from process accounting
+
+this is small number of logins for now - .6% for 6mo data across (3/453 logins)
+

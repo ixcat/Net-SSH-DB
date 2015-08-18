@@ -1,0 +1,30 @@
+
+SSH Processing
+==============
+
+code review:
+  - existing event interpretation logic appears mostly functional, 
+    but has some problems/possible problems:
+
+    - pid is main event key - which could cause problems for multi-host logs
+    - data should be reviewed for accuracy: tracked in 'fixme' dir
+
+code improvement:
+
+  - break out log-event generator from log-event interpreter
+    - this allows the 'raw dump' (sftpdmp) to proceed without date 
+      interpretation or with optional date interpretation
+    - then, processing can be made to actually perform date interpretation
+  - break out the syslog date interpretation logic into a separate class
+    which is then used by the log-event interpreter.
+
+
+
+errata/bugs:
+  - no reliable way to track system restarts
+    - sshd itself doesn't terminate all connections on restart,
+      sshd restart is not tied to host restart
+  - so, this must be interpolated externally e.g. via utmp reboot
+    records. 
+
+
