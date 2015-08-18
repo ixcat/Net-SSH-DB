@@ -63,7 +63,7 @@ sub main {
 
 			my $procy = $ENV{SFTPDBYYYY} ?
 				$ENV{SFTPDBYYYY} :
-				Time::Piece::localtime()->_year();
+				( Time::Piece::localtime()->_year() + 1900 );
 
 			my $proctz = $ENV{TZ} ? $ENV{TZ} : 'GMT';
 
