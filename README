@@ -1,0 +1,20 @@
+
+Net-SSH-DB: perl SSH log login parser and SQLite record database 
+
+Requires DBD::SQLite.
+
+Interprets ssh log records (e.g. synthesizes login records from raw data)
+and loads into a simple SQLite database table.
+
+installation:
+
+  perl Makefile.PL
+  make
+  make install
+
+usage:
+
+  sshdb : actual application; run with no arguments for synopsys
+  sshdmp : low-level ssh log data dump
+  sshproc : high-level synthetic record dump
+
